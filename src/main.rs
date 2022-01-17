@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::{fmt::Display, io::{self, Write}};
 
 #[derive(PartialEq, Eq, Debug)]
 enum Result {
@@ -46,6 +46,10 @@ impl Guess {
 
         Self { inner: res }
     }
+
+    fn correct(self) -> bool {
+        self.inner.iter().all(|r| r == &Result::Correct)
+    }
 }
 
 impl Display for Guess {
@@ -65,6 +69,26 @@ impl Wordle {
     fn guess(&self, guess: String) -> Guess {
         Guess::compare(self.word.clone(), guess)
     }
+
+    fn repl(self) -> io::Result<()> {
+        let mut input = String::new();
+        loop {
+            print!("> ");
+            io::stdout().flush()?;
+    
+            io::stdin().read_line(&mut input)?;
+            input = input.trim().into();
+            let g = self.guess(input);
+            println!("{}", g);
+            if g.correct() {
+                println!("Congrats! 🎉");
+                break Ok(())
+            }
+    
+            // reset input on each guess
+            input = String::new();
+        }
+    }
 }
 
 impl From<String> for Wordle {
@@ -74,11 +98,9 @@ impl From<String> for Wordle {
 }
 
 fn main() {
+    // TODO(wperron) choose word at random from a list somewhere
     let wordle = Wordle::from(String::from("fudge"));
-    println!("{}", wordle.guess(String::from("foobarbaz")));
-    println!("{}", wordle.guess(String::from("reads")));
-    println!("{}", wordle.guess(String::from("lodge")));
-    println!("{}", wordle.guess(String::from("fudge")));
+    wordle.repl().unwrap();
 }
 
 #[cfg(test)]
@@ -87,6 +109,8 @@ mod test {
 
     #[test]
     fn test_wordle() {
+        let wordle = Wordle::from(String::from("fudge"));
+
         assert_eq!(
             wordle.guess(String::from("reads")),
             Guess {
