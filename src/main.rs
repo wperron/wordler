@@ -1,4 +1,9 @@
+mod dict;
+
 use std::{fmt::Display, io::{self, Write}};
+use rand::{thread_rng, Rng};
+
+use dict::DICT;
 
 #[derive(PartialEq, Eq, Debug)]
 enum Result {
@@ -48,6 +53,7 @@ impl Guess {
     }
 
     fn correct(self) -> bool {
+        // TODO(wperron) check for the length of the guess, right now the first 3 letters get a win
         self.inner.iter().all(|r| r == &Result::Correct)
     }
 }
@@ -92,14 +98,20 @@ impl Wordle {
 }
 
 impl From<String> for Wordle {
-    fn from(word: String) -> Self {
+    fn from(dict: String) -> Self {
+        let words = dict.lines();
+        let word = words.clone()
+            .nth(thread_rng().gen_range(0..words.count()))
+            .unwrap_or("fudge")
+            .to_string();
+        println!("{:?}", word);
         Self { word }
     }
 }
 
 fn main() {
     // TODO(wperron) choose word at random from a list somewhere
-    let wordle = Wordle::from(String::from("fudge"));
+    let wordle = Wordle::from(String::from(DICT));
     wordle.repl().unwrap();
 }
 
