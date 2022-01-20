@@ -94,11 +94,10 @@ struct Game {
 
 impl Game {
     fn guess(&self, guess: String) -> Result<Guess, Error> {
-        if guess.len() < 5 {
-            return Err(Error::from(ErrorKind::GuessTooShort));
-        }
-        else if guess.len() > 5 {
-            return Err(Error::from(ErrorKind::GuessTooLong));
+        match guess.len() {
+            l if l < 5 => return Err(Error::from(ErrorKind::GuessTooShort)),
+            l if l > 5 => return Err(Error::from(ErrorKind::GuessTooLong)),
+            _ => {},
         }
 
         let mut res = vec![];
