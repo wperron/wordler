@@ -1,6 +1,6 @@
 mod dict;
 
-use std::{fmt::Display, io::{self, Write}};
+use std::{fmt::Display, fmt::Debug, io::{self, Write}};
 use rand::{thread_rng, Rng};
 
 use dict::DICT;
@@ -10,7 +10,6 @@ enum GuessChar {
     Absent,
     OutOfPlace,
     Correct,
-    OutOfBounds,
 }
 
 impl Display for GuessChar {
@@ -19,13 +18,13 @@ impl Display for GuessChar {
             GuessChar::Absent => write!(f, "⬛"),
             GuessChar::OutOfPlace => write!(f, "🟨"),
             GuessChar::Correct => write!(f, "🟩"),
-            GuessChar::OutOfBounds => write!(f, "❌"),
         }
     }
 }
 
 /// Guess represents a complete guessed word, made up of a list of guessed
 /// charaters.
+#[derive(PartialEq, Eq, Debug)]
 struct Guess {
     inner: Vec<GuessChar>
 }
@@ -53,18 +52,64 @@ impl Guess {
     }
 }
 
+struct Error {
+    kind: ErrorKind
+}
+
+enum ErrorKind {
+    GuessTooShort,
+    GuessTooLong,
+}
+
+impl std::error::Error for Error {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        todo!()
+    }
+}
+
+impl From<ErrorKind> for Error {
+    fn from(kind: ErrorKind) -> Self {
+        Self { kind }
+    }
+}
+
+impl Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.kind {
+            ErrorKind::GuessTooShort => write!(f, "guess too short, guesses must be 5 letters."),
+            ErrorKind::GuessTooLong => write!(f, "guess too long, guesses must be 5 letters."),
+        }
+    }
+}
+
+impl Debug for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self)
+    }
+}
+
 struct Game {
     word: String,
 }
 
 impl Game {
-    fn guess(&self, guess: String) -> Guess {
+    fn guess(&self, guess: String) -> Result<Guess, Error> {
+        if guess.len() < 5 {
+            return Err(Error::from(ErrorKind::GuessTooShort));
+        }
+        else if guess.len() > 5 {
+            return Err(Error::from(ErrorKind::GuessTooLong));
+        }
+
         let mut res = vec![];
         let mut word_chars = self.word.chars();
         for c in guess.chars() {
             let maybe_next = word_chars.next();
             match maybe_next {
-                None => res.push(GuessChar::OutOfBounds),
+                // The None case should never happen since the length is checked
+                // earlier, this makes the compiler happy at the cost of a
+                // little added verbosity
+                None => return Err(Error::from(ErrorKind::GuessTooLong)),
                 Some(same_pos) => {
                     if c == same_pos {
                         res.push(GuessChar::Correct);
@@ -77,7 +122,7 @@ impl Game {
             }
         }
 
-        Guess::from(res)
+        Ok(Guess::from(res))
     }
 
     /// Starts a repl for the current game instance. This assumes the process
@@ -90,11 +135,15 @@ impl Game {
     
             io::stdin().read_line(&mut input)?;
             input = input.trim().into();
-            let g = self.guess(input);
-            println!("{}", g);
-            if g.correct() {
-                println!("Congrats! 🎉");
-                break Ok(())
+            match self.guess(input) {
+                Ok(g) => {
+                    println!("{}", g);
+                    if g.correct() {
+                        println!("Congrats! 🎉");
+                        break Ok(())
+                    }
+                },
+                Err(e) => println!("{}", e),
             }
     
             // reset input on each guess
@@ -131,7 +180,7 @@ mod test {
         let wordle = Game::from(String::from("fudge"));
 
         assert_eq!(
-            wordle.guess(String::from("reads")),
+            wordle.guess(String::from("reads")).unwrap(),
             Guess {
                 inner: vec![
                     GuessChar::Absent,
@@ -143,7 +192,7 @@ mod test {
             }
         );
         assert_eq!(
-            wordle.guess(String::from("lodge")),
+            wordle.guess(String::from("lodge")).unwrap(),
             Guess {
                 inner: vec![
                     GuessChar::Absent,
@@ -161,7 +210,7 @@ mod test {
         let wordle = Game::from(String::from("sassy"));
 
         assert_eq!(
-            wordle.guess(String::from("space")),
+            wordle.guess(String::from("space")).unwrap(),
             Guess {
                 inner: vec![
                     GuessChar::Correct,
@@ -175,22 +224,10 @@ mod test {
     }
 
     #[test]
-    fn test_oob() {
+    fn test_out_of_bounds() {
         let wordle = Game::from(String::from("fudge"));
 
-        assert_eq!(
-            wordle.guess(String::from("lodging")),
-            Guess {
-                inner: vec![
-                    GuessChar::Absent,
-                    GuessChar::Absent,
-                    GuessChar::Correct,
-                    GuessChar::Correct,
-                    GuessChar::Absent,
-                    GuessChar::OutOfBounds,
-                    GuessChar::OutOfBounds,
-                ]
-            }
-        );
+        assert!(wordle.guess(String::from("lodging")).is_err());
+        assert!(wordle.guess(String::from("lol")).is_err());
     }
 }
