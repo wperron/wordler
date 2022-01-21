@@ -1,6 +1,6 @@
 mod dict;
 
-use std::{fmt::Display, fmt::Debug, io::{self, Write}};
+use std::{fmt::Display, fmt::Debug, io::{self, Write}, str::FromStr};
 use rand::{thread_rng, Rng};
 
 use dict::DICT;
@@ -59,11 +59,25 @@ struct Error {
 enum ErrorKind {
     GuessTooShort,
     GuessTooLong,
+    InvalidCommand,
+    IoError(io::Error),
 }
 
 impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         todo!()
+    }
+}
+
+impl Error {
+    // TODO(wperron) keep this?
+    fn retryable(self) -> bool {
+        match self.kind {
+            ErrorKind::GuessTooShort => true,
+            ErrorKind::GuessTooLong => true,
+            ErrorKind::InvalidCommand => true,
+            ErrorKind::IoError(_) => false,
+        }
     }
 }
 
@@ -73,11 +87,21 @@ impl From<ErrorKind> for Error {
     }
 }
 
+impl From<io::Error> for Error {
+    fn from(e: io::Error) -> Self {
+        Self {
+            kind: ErrorKind::IoError(e),
+        }
+    }
+}
+
 impl Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self.kind {
+        match &self.kind {
             ErrorKind::GuessTooShort => write!(f, "guess too short, guesses must be 5 letters."),
             ErrorKind::GuessTooLong => write!(f, "guess too long, guesses must be 5 letters."),
+            ErrorKind::InvalidCommand => write!(f, "unknown command. use /help to list all available commands"),
+            ErrorKind::IoError(err) => write!(f, "io error: {}", err),
         }
     }
 }
@@ -90,9 +114,23 @@ impl Debug for Error {
 
 struct Game {
     word: String,
+    keep_going: bool,
 }
 
 impl Game {
+    fn help(&self) {
+            println!("Welcome to Wordler!
+A Wordle REPL thingy.
+
+COMMANDS:
+\t/help\tPrints this help text.
+\t/letters\tShows the letters that have not been tried yet.
+\t/exit\tExits the game.");
+    }
+
+    fn letters(&self) {}
+
+    /// Evaluate a guess against the secret word.
     fn guess(&self, guess: String) -> Result<Guess, Error> {
         match guess.len() {
             l if l < 5 => return Err(Error::from(ErrorKind::GuessTooShort)),
@@ -124,29 +162,71 @@ impl Game {
         Ok(Guess::from(res))
     }
 
+    /// Evaluate a Command in the context of the current game instance. Returns
+    /// a boolean set to true if the program should keep going.
+    fn eval(&mut self, cmd: Command) {
+        match cmd {
+            Command::Guess(guess) => {
+                match self.guess(guess) {
+                    Ok(g) => {
+                        println!("{}", g);
+                        if g.correct() {
+                            println!("Congrats! 🎉");
+                            self.keep_going = false;
+                        }
+                    },
+                    Err(e) => println!("{}", e),
+                }
+            },
+            Command::Help => self.help(),
+            Command::Letters => self.letters(),
+            Command::Exit => self.keep_going = false,
+        }
+    }
+
     /// Starts a repl for the current game instance. This assumes the process
     /// is a TTY.
-    fn repl(self) -> io::Result<()> {
+    fn repl(mut self) -> Result<(), Error> {
         let mut input = String::new();
-        loop {
+        while self.keep_going {
             print!("> ");
             io::stdout().flush()?;
     
             io::stdin().read_line(&mut input)?;
             input = input.trim().into();
-            match self.guess(input) {
-                Ok(g) => {
-                    println!("{}", g);
-                    if g.correct() {
-                        println!("Congrats! 🎉");
-                        break Ok(())
-                    }
-                },
-                Err(e) => println!("{}", e),
-            }
-    
+            let cmd = Command::from_str(input.as_str())?;
+            self.eval(cmd);
+
             // reset input on each guess
             input = String::new();
+        }
+
+        Ok(())
+    }
+}
+
+enum Command {
+    Guess(String),
+    Help,
+    Letters,
+    Exit,
+}
+
+struct CommandOutput {
+    output: String,
+    should_exit: bool,
+}
+
+impl FromStr for Command {
+    type Err = Error;
+
+    fn from_str(com: &str) -> Result<Self, Self::Err> {
+        match com {
+            "/help" => Ok(Command::Help),
+            "/letters" => Ok(Command::Letters),
+            "/exit" => Ok(Command::Exit),
+            c if c.starts_with('/') => Err(Error::from(ErrorKind::InvalidCommand)),
+            guess => Ok(Command::Guess(String::from(guess))),
         }
     }
 }
@@ -161,7 +241,7 @@ impl From<String> for Game {
             .unwrap_or("fudge")
             .to_string();
         println!("{:?}", word);
-        Self { word }
+        Self { word, keep_going: true }
     }
 }
 
