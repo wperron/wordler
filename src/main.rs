@@ -74,12 +74,16 @@ enum ErrorKind {
 
 impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        todo!()
+        match self.kind {
+            ErrorKind::GuessTooShort => None,
+            ErrorKind::GuessTooLong => None,
+            ErrorKind::InvalidCommand => None,
+            ErrorKind::IoError(ref e) => e.source(),
+        }
     }
 }
 
 impl Error {
-    // TODO(wperron) keep this?
     fn retryable(self) -> bool {
         match self.kind {
             ErrorKind::GuessTooShort => true,
@@ -251,6 +255,30 @@ COMMANDS:
     }
 }
 
+/// Forms a new game by splitting the provided dictionary into individual words
+/// and picking one at random.
+impl From<String> for Game {
+    fn from(dict: String) -> Self {
+        let words = dict.lines();
+        let word = words
+            .clone()
+            .nth(thread_rng().gen_range(0..words.count()))
+            .unwrap_or("fudge")
+            .to_string();
+
+        let mut letters = HashMap::new();
+        for l in LETTERS {
+            letters.insert(l, false);
+        }
+
+        Self {
+            word,
+            keep_going: true,
+            used_letters: letters,
+        }
+    }
+}
+
 enum Command {
     Guess(String),
     Help,
@@ -268,33 +296,6 @@ impl FromStr for Command {
             "/exit" => Ok(Command::Exit),
             c if c.starts_with('/') => Err(Error::from(ErrorKind::InvalidCommand)),
             guess => Ok(Command::Guess(String::from(guess))),
-        }
-    }
-}
-
-/// Forms a new game by splitting the provided dictionary into individual words
-/// and picking one at random.
-impl From<String> for Game {
-    fn from(dict: String) -> Self {
-        let words = dict.lines();
-        let word = words
-            .clone()
-            .nth(thread_rng().gen_range(0..words.count()))
-            .unwrap_or("fudge")
-            .to_string();
-
-        // TODO(wperron) add a `debug` flag here instead.
-        println!("{:?}", word);
-
-        let mut letters = HashMap::new();
-        for l in LETTERS {
-            letters.insert(l, false);
-        }
-
-        Self {
-            word,
-            keep_going: true,
-            used_letters: letters,
         }
     }
 }
