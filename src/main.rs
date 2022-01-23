@@ -236,7 +236,7 @@ COMMANDS:
             io::stdout().flush()?;
 
             io::stdin().read_line(&mut input)?;
-            input = input.trim().into();
+            input = input.trim().to_ascii_lowercase().into();
             match Command::from_str(input.as_str()) {
                 Ok(cmd) => self.eval(cmd),
                 Err(e) => {
