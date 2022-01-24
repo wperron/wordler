@@ -157,7 +157,7 @@ COMMANDS:
         let mut unused: Vec<String> = self
             .used_letters
             .iter()
-            .filter(|(_, used)| !*used)
+            .filter(|(_, &used)| !used)
             .map(|(letter, _)| letter.to_string())
             .collect();
 
@@ -173,6 +173,8 @@ COMMANDS:
             l if l > 5 => return Err(Error::from(ErrorKind::GuessTooLong)),
             _ => {}
         }
+
+        let guess = guess.to_ascii_lowercase();
 
         // Compare words
         let mut res = vec![];
@@ -236,7 +238,7 @@ COMMANDS:
             io::stdout().flush()?;
 
             io::stdin().read_line(&mut input)?;
-            input = input.trim().to_ascii_lowercase().into();
+            input = input.trim().into();
             match Command::from_str(input.as_str()) {
                 Ok(cmd) => self.eval(cmd),
                 Err(e) => {
@@ -363,5 +365,47 @@ mod test {
 
         assert!(wordle.guess(String::from("lodging")).is_err());
         assert!(wordle.guess(String::from("lol")).is_err());
+    }
+
+    #[test]
+    fn test_uppercase() {
+        let mut wordle = Game::from(String::from("fudge"));
+        assert_eq!(
+            wordle.guess(String::from("FUDGE")).unwrap(),
+            Guess {
+                inner: vec![
+                    GuessChar::Correct,
+                    GuessChar::Correct,
+                    GuessChar::Correct,
+                    GuessChar::Correct,
+                    GuessChar::Correct,
+                ]
+            }
+        );
+    }
+
+    #[test]
+    fn test_used_letters() {
+        let mut wordle = Game::from(String::from("fudge"));
+        let _ = wordle.guess(String::from("cream"));
+
+        assert_eq!(
+            wordle.used_letters.iter().filter(|(_, &used)| used).count(),
+            5
+        );
+
+        let _ = wordle.guess(String::from("cream"));
+
+        assert_eq!(
+            wordle.used_letters.iter().filter(|(_, &used)| used).count(),
+            5
+        );
+
+        let _ = wordle.guess(String::from("smile"));
+
+        assert_eq!(
+            wordle.used_letters.iter().filter(|(_, &used)| used).count(),
+            8
+        );
     }
 }
